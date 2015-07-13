@@ -6,6 +6,19 @@ import os.path
 import db
 import re
 from winmgr import WindowMgr
+import handparse
+
+seat_cords = [
+    (0.398, 0.680), #0
+    (0.175, 0.680), #1
+    (0.017, 0.480), #2
+    (0.017, 0.295), #3
+    (0.260, 0.132), #4
+    (0.530, 0.132), #5
+    (0.790, 0.295), #6
+    (2.000, 2.000), #7
+    (0.790, 0.480), #8
+    (0.620, 0.680)] #9
 
 class App(wx.App):
     TableUpdateEvent, EVT_TABLE_UPDATE = wx.lib.newevent.NewEvent()
@@ -30,37 +43,44 @@ class MainFrame(wx.Frame):
             wx.GetApp().tables[event.src_path] = (TableMainFrame(event.src_path))
 # -----------------------------------------------------------------------------
 class TableMainFrame(wx.Frame):
-    origo = (960,540)
-    delta_rad = 2*math.pi / 10
     def __init__(self, src_path):
         #match = re.search('\((\d+)\)', os.path.basename(src_path))
         match = re.search('\w+ (\w+)', os.path.basename(src_path))
         self.id = match.group(1)
         wx.Frame.__init__(self, wx.GetApp().TopWindow, wx.NewId(), 'Table')
-        self.boxes = []
         self.players = [None]*10
-        angle = 0
-        self.origo = self.GetPositionTuple()
-        for i in range(10):
-            radius = 200 + 50*abs(math.cos(angle))
-            box = StayOnTopFrame(self)
-            delta_pos = int(radius*math.cos(angle)), int(radius*math.sin(angle))
-            x, y = map(sum,zip(self.origo, delta_pos))
-            box.MoveXY(x, y)
-            self.boxes.append(box)
-            angle += self.delta_rad
             
-        self.Show()
         self.file = open(src_path)
         self.window = WindowMgr(self.id)
+
+
+        self.boxes = []
+        x, y = self.window.get_rect()[0:2]
+        self.SetPosition((x,y))
+        for i in range(10):
+            box = StayOnTopFrame(self, i)
+            x_off, y_off = seat_cords[i]
+
+            box.SetPosition((x + x_off, y + y_off))
+            self.boxes.append(box)
+
+        self.Show()
         self.on_timer()
+        self.update()
+
 
     def on_timer(self):
-        delta_pos = wx.Point(*self.window.get_rect()[0:2]) - self.GetPosition()
-        #print delta_pos
-        self.Move(self.GetPosition() + delta_pos)
-        for box in self.boxes:
-            box.Move(box.GetPosition() + delta_pos)
+        # delta_pos = wx.Point(*self.window.get_rect()[0:2]) - self.GetPosition()
+        # self.Move(self.GetPosition() + delta_pos)
+        # for box in self.boxes:
+        #     box.Move(box.GetPosition() + delta_pos)
+        x, y, w, h = self.window.get_rect()
+        w, h = w - x, h - y
+        for i,box in enumerate(self.boxes):
+            box.SetPosition((
+                    int(x + (w*seat_cords[i][0])),
+                    int(y + (h*seat_cords[i][1]))
+                ))
         wx.CallLater(10, self.on_timer)
 
     def update(self):
@@ -72,66 +92,85 @@ class TableMainFrame(wx.Frame):
 # -----------------------------------------------------------------------------
 class StayOnTopFrame(wx.Frame):
 
-    def __init__(self, parent):
+    def __init__(self, parent, seat):
         """Constructor"""
-        on_top = (
-        	wx.MINIMIZE_BOX |
-        	wx.MAXIMIZE_BOX |
-        	wx.SYSTEM_MENU |
-        	wx.CLOSE_BOX |
-        	#wx.RESIZE_BORDER |
-        	wx.CLIP_CHILDREN |
-        	wx.STAY_ON_TOP)
-
-        wx.Frame.__init__(
-        	self,
-        	parent,
-        	title="Stay on top2",
-        	style=on_top
-        	)
+        wx.Frame.__init__(self, parent, wx.ID_ANY, 'Seat: %s'%seat,
+                         style =
+                           wx.FRAME_SHAPED
+                         | wx.SIMPLE_BORDER
+                         | wx.FRAME_NO_TASKBAR
+                         | wx.STAY_ON_TOP
+                         )
  
-        self.lastMousePos = (0, 0)
-        panel = wx.Panel(self)
-        panel.Bind(wx.EVT_MOTION, self.OnFrame1Motion)
-        panel.Bind(wx.EVT_LEFT_DOWN, self.OnFrame1Click)
-        panel.Bind(wx.EVT_RIGHT_DOWN, self.OnFrame1Click)
-        self.SetSizeWH(100,50)
-        
-        self.text = wx.StaticText(panel, label='Placeholder')
-        self.text.Bind(wx.EVT_MOTION, self.OnFrame1Motion)
-        self.text.Bind(wx.EVT_LEFT_DOWN, self.OnFrame1Click)
-        self.text.Bind(wx.EVT_RIGHT_DOWN, self.OnFrame1Click)
+
+        self.seat = seat
+        self.delta = (0,0)
+        self.Bind(wx.EVT_LEFT_DOWN,     self.OnLeftDown)
+        self.Bind(wx.EVT_LEFT_UP,       self.OnLeftUp)
+        self.Bind(wx.EVT_PAINT,         self.OnPaint)
+        self.Bind(wx.EVT_MOTION,        self.OnMouseMove)
+        self.text1 = 'Empty'
+        self.text2 = ''
+        img = wx.Image('C:\Users\cyka\Desktop\HUD\images\hud.png', wx.BITMAP_TYPE_PNG)
+        self.bmp = wx.BitmapFromImage(img)
+        self.SetClientSize((self.bmp.GetWidth(), self.bmp.GetHeight()))
+        region = wx.RegionFromBitmapColour(self.bmp, wx.Colour(255, 0, 0, 0))
+        self.SetShape(region)
+        dc = wx.ClientDC(self)
+        dc.DrawBitmap(self.bmp, 0,0, True)
+
+        # panel = wx.Panel(self)
+        # panel.Bind(wx.EVT_MOTION, self.OnFrame1Motion)
+        # panel.Bind(wx.EVT_LEFT_DOWN, self.OnFrame1Click)
+        # panel.Bind(wx.EVT_RIGHT_DOWN, self.OnFrame1Click)
+        # self.text = wx.StaticText(panel, label='Placeholder')
+        # self.text.Bind(wx.EVT_MOTION, self.OnFrame1Motion)
+        # self.text.Bind(wx.EVT_LEFT_DOWN, self.OnFrame1Click)
+        # self.text.Bind(wx.EVT_RIGHT_DOWN, self.OnFrame1Click)
 
         self.Show()
 
-    def OnFrame1Motion(self, event):
-        if event.LeftIsDown():
-	        x, y = wx.GetMousePosition()
-	        x_cur, y_cur = self.GetScreenPosition()
-	        delta_x, delta_y = x-self.lastMousePos[0],y-self.lastMousePos[1]
-	        self.lastMousePos = x,y
-	        new_x, new_y = x_cur + delta_x, y_cur + delta_y
-        	self.MoveXY(new_x,new_y)
-    	elif event.RightIsDown():
-	        x, y = wx.GetMousePosition()
-	        delta_x, delta_y = x-self.lastMousePos[0],y-self.lastMousePos[1]
-	        for child in self.GetParent().GetChildren():
-		        x_cur, y_cur = child.GetScreenPosition()
-		        new_x, new_y = x_cur + delta_x, y_cur + delta_y
-	        	child.MoveXY(new_x,new_y)
-        	self.lastMousePos = x,y
+    def OnPaint(self, evt):
+        dc = wx.PaintDC(self)
+        dc.DrawBitmap(self.bmp, 0,0, True)
+        dc.SetBackgroundMode(wx.TRANSPARENT)
+        dc.SetFont(wx.Font(12, wx.MODERN, wx.NORMAL, wx.NORMAL, False, u'Consolas'))
+        dc.SetTextForeground((255,255,255))
+        dc.DrawText(self.text1, 0, -1)
+        dc.DrawText(self.text2, 0, 16)
 
-        event.Skip()
-    def OnFrame1Click(self, event):
-    	self.lastMousePos = wx.GetMousePosition()
+    def OnLeftDown(self, evt):
+        self.CaptureMouse()
+        x, y = self.ClientToScreen(evt.GetPosition())
+        originx, originy = self.GetPosition()
+        dx = x - originx
+        dy = y - originy
+        self.delta = ((dx, dy))
+
+    def OnLeftUp(self, evt):
+        if self.HasCapture():
+            self.ReleaseMouse()
+    def OnMouseMove(self, evt):
+        if evt.Dragging() and evt.LeftIsDown():
+            x, y = self.ClientToScreen(evt.GetPosition())
+            fp = (x - self.delta[0], y - self.delta[1])
+            self.Move(fp)
+            print self.seat, self.GetParent().window.get_rect()[:2],self.ClientToScreen(self.GetPosition())
 
     def update(self, player):
         if player:
             stats = db.get_playerstats(player)
-            #print stats
-            self.text.SetLabel('{} {} {} {}%\n00 00 00'.format(player[:4],stats[2],stats[3], 100*stats[3]/stats[2]))
+            try:
+                self.text1 = '{} {:02d} {:02d} {:02d}'.format(
+                    player[:5], stats[3], stats[4], 100*(stats[3]+stats[4])/stats[2])
+                self.text2 = '{}'.format(stats[2])
+            except:
+                self.text1 = player[:5]
+                self.text2 = '--'
         else:
-            self.text.SetLabel('Empty')
+            self.text1 = ('Empty')
+            self.text2 = ('')
+        self.Refresh()
  
 #----------------------------------------------------------------------
 if __name__ == "__main__":

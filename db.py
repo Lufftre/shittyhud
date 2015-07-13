@@ -11,18 +11,27 @@ def create_table():
                                 'ID INTEGER PRIMARY KEY,'
                                 'NAME CHAR(64) UNIQUE,'
                                 'HANDS INT,'
-                                'VIP INT)')
+                                'LIMP INT,'
+                                'PFRAISE INT)')
         dbh.commit()
 
-def add_hand(name,vip=False):
+def add_hand(name, action=0):
     with db_open() as dbh:
+        if action == 1:
+            limp, pfraise = 1,0
+        elif action == 2:
+            limp, pfraise = 0,1
+        else:
+            limp, pfraise = 0,0
+
         cursor = dbh.cursor()
         cursor.execute('SELECT * FROM players WHERE(NAME=?)', [name])
         result = cursor.fetchone()
         if result:
-            dbh.execute('UPDATE players SET HANDS=?, VIP=? WHERE (NAME=?)', [result[2]+1, result[3]+vip, name])
+            dbh.execute('UPDATE players SET HANDS=?, LIMP=?, PFRAISE=? WHERE (NAME=?)',
+                [result[2]+1, result[3]+limp, result[4]+pfraise, name])
         else:
-            dbh.execute('INSERT INTO players VALUES(NULL,?,1,?)',[name,int(vip)])
+            dbh.execute('INSERT INTO players VALUES(NULL,?,1,?,?)',[name,limp,pfraise])
         dbh.commit()
 
 def get_playerstats(name):
